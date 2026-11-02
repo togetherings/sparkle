@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sparkle</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <!-- Home: today's word, practice, stats and scoreboard -->
+    <section id="home" class="screen">
+      <header class="brand">
+        <h1 class="logo" aria-label="Sparkle">
+          <span class="t hit">S</span><span class="t near">P</span><span class="t hit">A</span><span class="t miss">R</span><span class="t hit">K</span><span class="t hit">L</span><span class="t hit">E</span>
+        </h1>
+        <p class="lead">Guess the hidden word using letter clues.</p>
+      </header>
+
+      <p class="note warn" id="home-error" role="alert" hidden></p>
+      <p class="note" id="where"></p>
+
+      <div class="cards">
+        <div class="card daily">
+          <h2>Today's word</h2>
+          <p id="daily-text">A new word every day. It counts on the scoreboard.</p>
+          <button type="button" class="go" id="btn-daily">Play today's word</button>
+        </div>
+        <div class="card practice" id="practice-card">
+          <h2>Practice</h2>
+          <p>Play as many words as you like. Practice never counts on the scoreboard.</p>
+          <button type="button" id="btn-practice">Practice a word</button>
+        </div>
+      </div>
+
+      <div class="stats" id="stats" aria-label="Your results">
+        <div><b id="st-points">0</b><span>Points</span></div>
+        <div><b id="st-played">0</b><span>Days played</span></div>
+        <div><b id="st-solved">0%</b><span>Solved</span></div>
+        <div><b id="st-streak">0</b><span>Days in a row</span></div>
+      </div>
+
+      <div class="dist-wrap">
+        <h2>Guesses you needed</h2>
+        <ol class="dist" id="dist"></ol>
+      </div>
+
+      <div class="board-wrap" id="board-wrap" hidden>
+        <h2 id="board-title">Scoreboard</h2>
+        <table class="board" id="board">
+          <thead><tr><th>#</th><th>Name</th><th class="num">Points</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="actions">
+        <button type="button" id="btn-help">How to play</button>
+        <button type="button" id="btn-exit">Back to games</button>
+      </div>
+    </section>
+
+    <!-- Playing a word -->
+    <section id="play" class="screen" hidden>
+      <div class="play-top">
+        <button type="button" class="back" id="btn-back" aria-label="Back to the start">&larr; Back</button>
+        <p class="mode" id="mode"></p>
+        <button type="button" class="back" id="btn-help2" aria-label="How to play">?</button>
+      </div>
+      <div class="grid" id="grid" role="grid" aria-label="Your guesses"></div>
+      <p class="toast" id="toast" role="status" aria-live="polite"></p>
+      <p class="visually-hidden" id="spoken" aria-live="polite"></p>
+
+      <div class="result" id="result" hidden>
+        <h2 id="result-title"></h2>
+        <p class="lead" id="result-word"></p>
+        <p id="result-points"></p>
+        <p class="note" id="result-standing"></p>
+        <div class="actions">
+          <button type="button" class="go" id="btn-more">Practice a word</button>
+          <button type="button" id="btn-home">Back to the start</button>
+        </div>
+      </div>
+
+      <div class="keyboard" id="keyboard" aria-label="Keyboard"></div>
+      <div class="sparks" id="sparks" aria-hidden="true"></div>
+    </section>
+
+    <!-- How to play -->
+    <section id="help" class="screen" hidden>
+      <h1>How to play</h1>
+      <p>Guess the hidden <b id="help-length">5</b>-letter word. You have <b id="help-guesses">6</b> guesses.</p>
+      <p>Type a real word and press <b>Enter</b>. Each letter then lights up to give you a clue:</p>
+      <ul class="legend">
+        <li><span class="t hit">S</span> The letter is in the word, in this exact spot.</li>
+        <li><span class="t near">P</span> The letter is in the word, but in a different spot.</li>
+        <li><span class="t miss">R</span> The letter is not in the word (or not again).</li>
+      </ul>
+      <h2>Points</h2>
+      <p>Today's word counts on the scoreboard. You get <b>1 point</b> for playing, and when you solve it,
+        <b>3 points</b> plus <b>1 more</b> for every guess you didn't need. Solving in one guess earns
+        <b id="help-max">8</b> points. Points add up day after day, so playing every day matters most.</p>
+      <p>Practice words never count, so try as many as you like.</p>
+      <div class="actions">
+        <button type="button" class="go" id="btn-help-done">Got it</button>
+      </div>
+    </section>
+  </main>
+  <script src="__kolibri_games__/sdk.js"></script>
+  <script src="words.js"></script>
+  <script src="logic.js"></script>
+  <script src="game.js"></script>
+</body>
+</html>

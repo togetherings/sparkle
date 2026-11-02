@@ -1,0 +1,66 @@
+{
+  "format": 1,
+  "type": "free-play",
+  "id": "org.togetherings.sparkle",
+  "version": "0.1.0",
+  "title": "Sparkle",
+  "description": "Guess the hidden word using letter clues. One new word a day, plus practice words.",
+  "entry": "index.html",
+  "language": "en",
+  "requires_platform": ">=0.2",
+  "icon": "icon.svg",
+  "color": "#e39b00",
+  "scoring": {
+    "label": "Points",
+    "unit": "points",
+    "order": "desc",
+    "counts": "best",
+    "tiebreak": "none",
+    "min": 0,
+    "max": 100000,
+    "decimals": 0
+  },
+  "settings": [
+    {
+      "key": "length",
+      "type": "choice",
+      "label": "Word length",
+      "choices": [
+        {"value": 4, "label": "4 letters (easier)"},
+        {"value": 5, "label": "5 letters"},
+        {"value": 6, "label": "6 letters (harder)"}
+      ],
+      "default": 5
+    },
+    {
+      "key": "guesses",
+      "type": "choice",
+      "label": "Guesses for each word",
+      "choices": [
+        {"value": 6, "label": "6"},
+        {"value": 8, "label": "8 (easier)"}
+      ],
+      "default": 6
+    },
+    {
+      "key": "word_mode",
+      "type": "choice",
+      "label": "Daily word",
+      "help": "A different word for each learner stops copying. The same word lets learners talk about it afterwards.",
+      "choices": [
+        {"value": "each", "label": "A different word for each learner"},
+        {"value": "same", "label": "The same word for everyone"}
+      ],
+      "default": "each"
+    },
+    {
+      "key": "practice",
+      "type": "boolean",
+      "label": "Allow practice words",
+      "help": "Practice words never count on the scoreboard.",
+      "default": true
+    }
+  ],
+  "authors": ["Togetherings"],
+  "license": "MIT"
+}

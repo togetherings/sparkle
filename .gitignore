@@ -1,0 +1,5 @@
+dist/
+screenshots/
+scowl/
+__pycache__/
+node_modules/
