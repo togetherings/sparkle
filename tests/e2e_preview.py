@@ -12,6 +12,8 @@ import tempfile
 import threading
 from http.server import ThreadingHTTPServer
 
+from playwright.sync_api import expect
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = "#/play/f-org.togetherings.sparkle"
 
@@ -57,8 +59,6 @@ def type_word(frame, word, keyboard=True):
 
 def revealed(page, frame, row):
     """Wait until every clue in a row is showing (and the game takes Enter again)."""
-    from playwright.sync_api import expect
-
     expect(frame.locator(".row").nth(row).locator(".cell").last).to_have_class(re.compile(r"\b(hit|near|miss)\b"))
     page.wait_for_timeout(400)
 
@@ -171,10 +171,14 @@ def main():
         page.set_viewport_size({"width": 390, "height": 760})
         frame.locator("#btn-practice").click()
         frame.locator("#play:not([hidden])").wait_for()
-        game_frame(page).locator("body").press_sequentially(wrong_words("", 1)[0])
-        game_frame(page).locator("body").press("Enter")
+        # The preview server's own bar sits over the bottom of the page; real
+        # Kolibri doesn't have it, so hide it and tap every key on screen.
+        page.evaluate("""() => { for (const el of document.querySelectorAll('body *')) {
+            if (getComputedStyle(el).position === 'fixed' && el.textContent.includes('Preview server')) el.style.display = 'none'; } }""")
+        type_word(frame, wrong_words("", 1)[0])
         revealed(page, frame, 0)
-        game_frame(page).locator("body").press_sequentially("pl")
+        for ch in "pl":
+            frame.locator(".key[data-key='%s']" % ch).click()
         shot(page, "5-phone.png")
         browser.close()
 
