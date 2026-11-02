@@ -68,6 +68,16 @@ To try it without Kolibri, run the preview server and open the address it prints
 kolibri-games-preview .          # finds the game/ folder
 ```
 
+### Live preview on GitHub Pages
+
+Every push to `main` publishes the game to GitHub Pages (`.github/workflows/pages.yml`), at
+https://togetherings.github.io/sparkle/. It runs the way any Kolibri Games game does when opened
+outside Kolibri: results stay in your own browser, there's no shared scoreboard, and the day
+comes from your device's clock. Everyone gets the same daily word there, because every visitor is
+the same "Preview player".
+
+To turn it on once: in the repository's **Settings → Pages**, set **Source** to **GitHub Actions**.
+
 ## Working on Sparkle
 
 ```

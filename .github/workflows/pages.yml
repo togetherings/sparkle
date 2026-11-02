@@ -1,0 +1,44 @@
+# Publishes a live preview of Sparkle to GitHub Pages.
+# Outside Kolibri the SDK runs in preview mode: results stay in the visitor's
+# browser and there's no shared scoreboard. Kolibri normally serves the SDK at
+# __kolibri_games__/sdk.js, so this copies the current one from kolibri-games.
+name: Preview site
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Put the game and the Kolibri Games SDK together
+        run: |
+          mkdir -p site/__kolibri_games__
+          cp -r game/. site/
+          curl -fsSL https://raw.githubusercontent.com/togetherings/kolibri-games/main/kolibri_games/assets/sdk.js \
+            -o site/__kolibri_games__/sdk.js
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
