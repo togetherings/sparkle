@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Unit tests
+        run: node --test tests/*.test.js
+      - name: Install Kolibri Games and Playwright
+        run: |
+          pip install git+https://github.com/togetherings/kolibri-games playwright
+          python -m playwright install --with-deps chromium
+      - name: Pack and check the game
+        run: |
+          kolibri-games-pack game
+          kolibri-games-pack --check dist/*.zip
+      - name: Browser test
+        run: python tests/e2e_preview.py --screenshots screenshots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sparkle
+          path: |
+            dist/*.zip
+            screenshots/
