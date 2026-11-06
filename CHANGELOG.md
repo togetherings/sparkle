@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- Sparkle is a **Scored Game** (`"type": "scored"`), one of the three kinds of game in Kolibri
+  Games 0.2.0 (Saved, Scored and Server Games), which replace Free-play Games.
+
 ## 0.1.0
 
 First version.
