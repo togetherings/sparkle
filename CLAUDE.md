@@ -1,6 +1,7 @@
 # Notes for working on this repository
 
-- Sparkle is a Free-play Game for Kolibri Games (github.com/togetherings/kolibri-games). Its
+- Sparkle is a Scored Game (manifest type "scored") for Kolibri Games (github.com/togetherings/kolibri-games),
+  played on its games page for now; it will be reworked with EduGame Kit (github.com/togetherings/edugame-kit). Its
   game format and SDK are documented there in docs/GAME_FORMAT.md.
 - `game/` is exactly what goes in the zip. Keep everything in it relative and self-contained:
   no network, no build step, plain ES5-style JavaScript that runs on old tablets.

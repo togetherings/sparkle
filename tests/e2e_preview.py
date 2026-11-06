@@ -15,7 +15,7 @@ from http.server import ThreadingHTTPServer
 from playwright.sync_api import expect
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-GAME = "#/play/f-org.togetherings.sparkle"
+GAME = "#/play/g-org.togetherings.sparkle"
 
 
 def serve(port):

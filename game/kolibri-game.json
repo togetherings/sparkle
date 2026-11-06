@@ -1,6 +1,6 @@
 {
   "format": 1,
-  "type": "free-play",
+  "type": "scored",
   "id": "org.togetherings.sparkle",
   "version": "0.1.0",
   "title": "Sparkle",
