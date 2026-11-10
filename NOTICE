@@ -1,7 +1,10 @@
 Sparkle
 Copyright (c) 2026 togetherings. Released under the MIT License (see LICENSE).
 
-Sparkle's word lists (game/words.js) are made from the English Speller Database
+English word lists
+------------------
+
+Sparkle's English word lists (game/words/en.json) are made from the English Speller Database
 (ESDB, previously known as SCOWL), https://github.com/en-wl/wordlist, with this notice:
 
   Copyright 2000-2026 by Kevin Atkinson
@@ -15,3 +18,23 @@ Sparkle's word lists (game/words.js) are made from the English Speller Database
   purpose.  It is provided "as is" without express or implied warranty.
 
   ESDB is derived from many sources, most of which are in the Public Domain.
+
+French word lists
+-----------------
+
+Sparkle's French word lists (game/words/fr.json) are made by tools/build_words.py from two sources,
+and are available under the terms of both of their licences:
+
+* The words, and every form of them, come from Grammalecte's French spelling dictionary
+  ("Dictionnaires orthographiques français", version 7.5), by Olivier R. and its contributors,
+  https://grammalecte.net/, as packaged in https://github.com/wooorm/dictionaries
+  (dictionaries/fr). It is licensed under the Mozilla Public License 2.0:
+  https://www.mozilla.org/MPL/2.0/. Its source is at the addresses above.
+
+* Which words are common enough to be the secret word comes from FrequencyWords by Hermit Dave,
+  https://github.com/hermitdave/FrequencyWords (content/2018/fr/fr_50k.txt), made from the
+  OpenSubtitles 2018 corpus. FrequencyWords' content is licensed under the Creative Commons
+  Attribution-ShareAlike 4.0 licence: https://creativecommons.org/licenses/by-sa/4.0/.
+
+Sparkle's changes: words are written without accents, names and the words in tools/words/fr/ are
+left out, and the secret words are put in a fixed shuffled order.

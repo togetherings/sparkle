@@ -1,5 +1,7 @@
 dist/
 screenshots/
+*-screenshots/
 scowl/
+fr-src/
 __pycache__/
 node_modules/

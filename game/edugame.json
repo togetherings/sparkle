@@ -1,0 +1,117 @@
+{
+  "format": 1,
+  "type": "scored",
+  "id": "org.togetherings.sparkle",
+  "version": "0.2.0",
+  "languages": [
+    "en",
+    "fr"
+  ],
+  "icon": "icon.svg",
+  "color": "#e39b00",
+  "options": {
+    "theme": "auto",
+    "header": false
+  },
+  "content": [
+    "words"
+  ],
+  "scoring": {
+    "fields": [
+      {
+        "key": "score",
+        "label": "score_label",
+        "unit": "score_unit",
+        "order": "desc",
+        "min": 0,
+        "max": 10,
+        "total": "sum"
+      },
+      {
+        "key": "plays",
+        "label": "days_played",
+        "source": "plays"
+      }
+    ],
+    "rank_by": [
+      "score"
+    ],
+    "counts": "total",
+    "boards": {
+      "label": "board_label",
+      "names": {
+        "en": "board.en",
+        "fr": "board.fr"
+      }
+    }
+  },
+  "settings": [
+    {
+      "key": "length",
+      "type": "choice",
+      "label": "Word length",
+      "choices": [
+        {
+          "value": 4,
+          "label": "4 letters (easier)"
+        },
+        {
+          "value": 5,
+          "label": "5 letters"
+        },
+        {
+          "value": 6,
+          "label": "6 letters (harder)"
+        }
+      ],
+      "default": 5
+    },
+    {
+      "key": "guesses",
+      "type": "choice",
+      "label": "Guesses for each word",
+      "choices": [
+        {
+          "value": 6,
+          "label": "6"
+        },
+        {
+          "value": 8,
+          "label": "8 (easier)"
+        }
+      ],
+      "default": 6
+    },
+    {
+      "key": "word_mode",
+      "type": "choice",
+      "label": "Daily word",
+      "help": "A different word for each learner stops copying. The same word lets learners talk about it afterwards.",
+      "choices": [
+        {
+          "value": "each",
+          "label": "A different word for each learner"
+        },
+        {
+          "value": "same",
+          "label": "The same word for everyone"
+        }
+      ],
+      "default": "each"
+    },
+    {
+      "key": "practice",
+      "type": "boolean",
+      "label": "Allow practice words",
+      "help": "Practice words never count on the scoreboard.",
+      "default": true
+    }
+  ],
+  "exclude": [
+    "tests/*"
+  ],
+  "authors": [
+    "Togetherings"
+  ],
+  "license": "MIT"
+}

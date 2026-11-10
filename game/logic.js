@@ -17,11 +17,24 @@
     return out;
   }
 
-  /** The word lists for one length: {answers: [...], isWord(w)}. */
+  /** The word lists for one length (data is words/<language>.json): {answers: [...], isWord(w)}. */
   function dictionary(data, n) {
     var answers = split(data.answers[n] || "", n);
-    var valid = new Set(answers.concat(split(data.guesses[n] || "", n)));
-    return { length: n, answers: answers, isWord: function (w) { return valid.has(w); } };
+    var valid = {};
+    answers.concat(split(data.guesses[n] || "", n)).forEach(function (w) { valid[w] = true; });
+    return { length: n, answers: answers, isWord: function (w) { return valid[w] === true; } };
+  }
+
+  /** How a secret word is really written ("cote" -> "côte" in French). */
+  function shown(data, word) {
+    return (data && data.accents && data.accents[word]) || word;
+  }
+
+  /** A letter as it's typed in the game: "É" -> "e", "ç" -> "c". Anything else -> "". */
+  function plain(ch) {
+    ch = String(ch || "").toLowerCase();
+    if (ch.normalize) ch = ch.normalize("NFD").replace(/[̀-ͯ]/g, "");
+    return /^[a-z]$/.test(ch) ? ch : "";
   }
 
   /** Colour each letter of a guess, the usual way: exact matches first, then
@@ -140,84 +153,91 @@
 
   // ------------------------------------------------------------ saved games
 
-  /** Saved data looks like:
-   *  {v: 1,
-   *   scopes: {"free": {days: {"2026-11-02": {w, n, g: [...], r: "won"|"lost"|"", p}}}, "c12": {...}},
-   *   practice: {played, won, dist: [count solved in 1, 2, ...]}}
-   */
-  function emptyState() {
-    return { v: 1, scopes: {}, practice: { played: 0, won: 0, dist: [] } };
+  /** The learner's save (EduGame.save), kept small for SCORM's 4,096 characters:
+   *  {v: 2,
+   *   w: {"free|en": {t: "2026-11-02", w: hidden word, n: guesses allowed, g: [...], r: "" | "won" | "lost", p}},
+   *   s: {"free|en": [played, won, streak, best streak, last day played (dayNumber), points, solved in 1, in 2, ...]},
+   *   x: {en: [practice played, practice solved]}}
+   *  Each key is a place to play ("free", or "c<challenge id>" on the Kolibri Games games page) and a
+   *  language: each language has its own daily words, stats and scoreboard. "w" keeps only the
+   *  latest daily word of each. */
+  var MAX_PLACES = 6;
+
+  function emptySave() {
+    return { v: 2, w: {}, s: {}, x: {} };
   }
 
-  function cleanState(saved) {
-    var s = saved && typeof saved === "object" && saved.v === 1 ? saved : emptyState();
-    s.scopes = s.scopes && typeof s.scopes === "object" ? s.scopes : {};
-    s.practice = s.practice && typeof s.practice === "object" ? s.practice : { played: 0, won: 0, dist: [] };
-    if (!Array.isArray(s.practice.dist)) s.practice.dist = [];
+  function isObject(o) { return !!o && typeof o === "object" && !Array.isArray(o); }
+
+  function cleanSave(saved) {
+    var s = isObject(saved) && saved.v === 2 ? saved : emptySave();
+    ["w", "s", "x"].forEach(function (k) { if (!isObject(s[k])) s[k] = {}; });
     return s;
   }
 
-  function scopeOf(state, scope) {
-    var sc = state.scopes[scope];
-    if (!sc || typeof sc !== "object" || typeof sc.days !== "object") sc = state.scopes[scope] = { days: {} };
-    return sc;
+  function placeKey(scope, lang) { return scope + "|" + lang; }
+
+  function num(n) { return typeof n === "number" && isFinite(n) ? n : 0; }
+
+  /** Numbers for the stats panel, as of today ("YYYY-MM-DD"). */
+  function stats(save, key, today) {
+    var a = Array.isArray(save.s[key]) ? save.s[key] : [];
+    var last = a.length > 4 ? num(a[4]) : -1;
+    var day = dayNumber(today);
+    return {
+      played: num(a[0]),
+      won: num(a[1]),
+      // Days played in a row, up to today (or yesterday, if today isn't played yet).
+      streak: a.length > 4 && day - last <= 1 ? num(a[2]) : 0,
+      bestStreak: num(a[3]),
+      last: last,
+      points: num(a[5]),
+      dist: a.slice(6).map(num)
+    };
   }
 
-  /** Total points in one scope: what the scoreboard shows. */
-  function total(sc) {
-    var sum = 0;
-    Object.keys(sc.days).forEach(function (k) {
-      var d = sc.days[k];
-      if (d && (d.r === "won" || d.r === "lost")) sum += d.p || 0;
-    });
-    return sum;
+  /** Has the daily word of this day (or a later one) been played already? */
+  function playedOn(save, key, date) {
+    var a = save.s[key];
+    return Array.isArray(a) && a.length > 4 && num(a[4]) >= dayNumber(date);
   }
 
-  /** Numbers for the stats panel. */
-  function stats(sc, today) {
-    var keys = Object.keys(sc.days).filter(function (k) {
-      var d = sc.days[k];
-      return d && (d.r === "won" || d.r === "lost");
-    }).sort();
-    var won = 0;
-    var dist = [];
-    keys.forEach(function (k) {
-      var d = sc.days[k];
-      if (d.r === "won") {
-        won += 1;
-        var used = d.c || (d.g ? d.g.length : 0);
-        dist[used - 1] = (dist[used - 1] || 0) + 1;
-      }
-    });
-    // Days played in a row, up to today (or yesterday, if today isn't played yet).
-    var streak = 0;
-    var day = sc.days[today] && sc.days[today].r ? today : addDays(today, -1);
-    while (sc.days[day] && (sc.days[day].r === "won" || sc.days[day].r === "lost")) {
-      streak += 1;
-      day = addDays(day, -1);
+  /** A finished daily word: its result goes into the stats. */
+  function addResult(save, key, date, solved, used, points) {
+    var st = stats(save, key, date);
+    var day = dayNumber(date);
+    var streak = st.last === day - 1 ? st.streak + 1 : 1;
+    var a = [st.played + 1, st.won + (solved ? 1 : 0), streak, Math.max(st.bestStreak, streak), day, st.points + points];
+    var dist = st.dist.slice();
+    if (solved) {
+      while (dist.length < used) dist.push(0);
+      dist[used - 1] += 1;
     }
-    var best = 0;
-    var run = 0;
-    var prev = null;
-    keys.forEach(function (k) {
-      run = prev && addDays(prev, 1) === k ? run + 1 : 1;
-      best = Math.max(best, run);
-      prev = k;
-    });
-    return { played: keys.length, won: won, dist: dist, streak: streak, bestStreak: best, points: total(sc) };
+    save.s[key] = a.concat(dist);
+    prune(save);
   }
 
-  /** Forget the guesses of old days (keeping the result and points), so saved
-   * data stays well under Kolibri Games' 64 KB limit. */
-  function prune(sc, today, keepDays) {
-    var cutoff = addDays(today, -(keepDays || 45));
-    Object.keys(sc.days).forEach(function (k) {
-      var d = sc.days[k];
-      if (k < cutoff && d && d.g && (d.r === "won" || d.r === "lost")) {
-        d.c = d.g.length;
-        delete d.g;
-        delete d.w;
-      }
+  /** A finished practice word: {played, won} in that language. */
+  function addPractice(save, lang, solved) {
+    var p = Array.isArray(save.x[lang]) ? save.x[lang] : [0, 0];
+    save.x[lang] = [num(p[0]) + 1, num(p[1]) + (solved ? 1 : 0)];
+    return { played: save.x[lang][0], won: save.x[lang][1] };
+  }
+
+  /** Keep the places played most lately (free play, each challenge, in each language), so the
+   *  save stays small. */
+  function prune(save, keep) {
+    keep = keep || MAX_PLACES;
+    function lastDay(k) {
+      var rec = save.w[k];
+      var a = save.s[k];
+      return Math.max(rec && rec.t ? dayNumber(rec.t) : -1, Array.isArray(a) && a.length > 4 ? num(a[4]) : -1);
+    }
+    var keys = Object.keys(save.s).concat(Object.keys(save.w)).filter(function (k, i, all) { return all.indexOf(k) === i; });
+    keys.sort(function (a, b) { return lastDay(b) - lastDay(a); });
+    keys.slice(keep).forEach(function (k) {
+      delete save.s[k];
+      delete save.w[k];
     });
   }
 
@@ -226,6 +246,7 @@
     split: split, dictionary: dictionary, mark: mark, code: code, letterStates: letterStates,
     points: points, maxPoints: maxPoints, hash: hash, dateKey: dateKey, dayNumber: dayNumber, addDays: addDays,
     dailyWord: dailyWord, practiceWord: practiceWord, hide: hide, unhide: unhide,
-    emptyState: emptyState, cleanState: cleanState, scopeOf: scopeOf, total: total, stats: stats, prune: prune
+    emptySave: emptySave, cleanSave: cleanSave, placeKey: placeKey, stats: stats, playedOn: playedOn,
+    addResult: addResult, addPractice: addPractice, prune: prune, plain: plain, shown: shown
   };
 });

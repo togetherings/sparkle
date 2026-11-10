@@ -1,8 +1,15 @@
-# Publishes a live preview of Sparkle to GitHub Pages.
-# Outside Kolibri the SDK runs in preview mode: results stay in the visitor's
-# browser and there's no shared scoreboard. Kolibri normally serves the SDK at
-# __kolibri_games__/sdk.js, so this copies the current one from kolibri-games.
-name: Preview site
+# Publishes Sparkle to GitHub Pages (https://togetherings.github.io/sparkle/): a front page, and
+# the game to play in the browser, in English and French. The steps are EduGame Kit's (its
+# game-pages.yml workflow), at the kit release named after "@", which Dependabot keeps up to date.
+# Played there, results stay in the visitor's browser and the day comes from their device's clock.
+#
+# One-time setup (see EduGame Kit's docs/platforms/GITHUB_PAGES.md):
+#   1. Settings > Pages > Source: GitHub Actions.
+#   2. To count visits with GoatCounter: Settings > Secrets and variables > Actions >
+#      Variables > New repository variable: GOATCOUNTER_CODE = your GoatCounter code.
+#      Leave it out and nothing is counted. The counting is only added to this site,
+#      never to the game's zips.
+name: GitHub Pages
 
 on:
   push:
@@ -19,26 +26,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Put the game and the Kolibri Games SDK together
-        run: |
-          mkdir -p site/__kolibri_games__
-          cp -r game/. site/
-          curl -fsSL https://raw.githubusercontent.com/togetherings/kolibri-games/main/kolibri_games/assets/sdk.js \
-            -o site/__kolibri_games__/sdk.js
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: site
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+  pages:
+    name: Pages
+    uses: togetherings/edugame-kit/.github/workflows/game-pages.yml@v0.3.1
+    with:
+      folder: game
