@@ -1,43 +1,53 @@
 /* Sparkle: guess the hidden word using letter clues.
  *
- * Today's word counts on the scoreboard. Each learner's saved data (KG.getState)
- * keeps their days; every finished daily word reports the learner's running
- * total of points as the attempt's score, and the scoreboard counts each
- * learner's best attempt, which is always their latest total.
- * Practice words are played in the page only and never reach the scoreboard.
- * Every daily guess is reported with KG.move, so coaches can see how it went. */
+ * Made with EduGame Kit: the save helper (edugame.js) saves and scores the same way wherever
+ * the game is played (a Kolibri channel, the Kolibri Games games page, Moodle, a website).
+ *
+ * Today's word counts on the scoreboard: each finished daily word reports that day's points,
+ * and the scoreboard adds them up (scoring.counts "total"). Each language has its own daily
+ * words and its own scoreboard: the board is the language ("en", "fr").
+ * Practice words never reach the scoreboard. Every daily guess is reported with
+ * EduGame.move, so coaches can see how it went on the games page.
+ * The learner's save (logic.js, "saved games") keeps the word in progress and the stats. */
 (function () {
   "use strict";
-  var KG = window.KolibriGames;
+  var E = window.EduGame;
   var L = window.SparkleLogic;
-  var WORDS = window.SPARKLE_WORDS;
   var $ = function (id) { return document.getElementById(id); };
 
-  var KEYS = ["qwertyuiop", "asdfghjkl", "+zxcvbnm-"];
   var REVEAL_MS = 260;
-  var WIN_WORDS = ["Brilliant!", "Sparkling!", "Great job!", "Well done!", "Nice!", "Phew!", "Just in time!", "Just in time!"];
+  var LOGO = ["hit", "near", "hit", "miss", "hit", "hit", "hit"];
 
   var app = {
     info: null,
-    state: L.emptyState(),
+    ready: false,
+    save: L.emptySave(),
     scope: "free",
     who: "",
+    lang: "en",
     settings: { length: 5, guesses: 6, word_mode: "each", practice: true },
     today: L.dateKey(new Date()),
+    words: {},        // words/<lang>.json, once loaded
     dicts: {},
-    lastScreen: "home",
-    saving: Promise.resolve()
+    lastScreen: "home"
   };
   var game = null; // the word being played
 
   // ------------------------------------------------------------- helpers
 
+  function t(key, vars) { return E.t(key, vars); }
+  function points(n) { return t("points", { n: n }); }
+  function guesses(n) { return t("guesses", { n: n }); }
+
+  function words() { return app.words[app.lang]; }
+
   function dict(n) {
-    if (!app.dicts[n]) app.dicts[n] = L.dictionary(WORDS, n);
-    return app.dicts[n];
+    var k = app.lang + n;
+    if (!app.dicts[k]) app.dicts[k] = L.dictionary(words(), n);
+    return app.dicts[k];
   }
 
-  function scope() { return L.scopeOf(app.state, app.scope); }
+  function placeKey() { return L.placeKey(app.scope, app.lang); }
 
   function show(id) {
     ["home", "play", "help"].forEach(function (s) { $(s).hidden = s !== id; });
@@ -57,50 +67,104 @@
     if (text && ms) toastTimer = setTimeout(function () { $("toast").textContent = ""; }, ms);
   }
 
-  function plural(n, one, many) { return n + " " + (n === 1 ? one : many); }
-
-  /** Save this learner's data. Saves run one after another, newest last. */
-  function save() {
-    var data = JSON.parse(JSON.stringify(app.state));
-    app.saving = app.saving.then(function () { return KG.setState(data); }).catch(function (err) {
+  /** Save the learner's progress. The helper writes at once, so this also works as the page closes. */
+  function persist() {
+    return E.save(JSON.parse(JSON.stringify(app.save))).catch(function (err) {
       console.warn("Sparkle couldn't save:", err && err.message);
     });
-    return app.saving;
+  }
+
+  function loadWords(lang) {
+    if (app.words[lang]) return Promise.resolve(app.words[lang]);
+    return E.load("words/" + lang + ".json").then(function (data) {
+      if (!data || !data.answers) throw new Error("The " + lang + " word list is missing.");
+      app.words[lang] = data;
+      return data;
+    });
+  }
+
+  /** "2026-11-02" written the way the language writes dates. */
+  function dateText(key) {
+    var p = key.split("-");
+    try {
+      return new Date(+p[0], +p[1] - 1, +p[2]).toLocaleDateString(app.lang, { day: "numeric", month: "long" });
+    } catch (e) {
+      return key;
+    }
   }
 
   // ---------------------------------------------------------------- home
 
+  function renderLogo() {
+    var logo = $("logo");
+    var name = t("logo");
+    logo.innerHTML = "";
+    logo.setAttribute("aria-label", name);
+    name.split("").forEach(function (ch, i) {
+      var s = document.createElement("span");
+      s.className = "t " + LOGO[i % LOGO.length];
+      s.textContent = ch;
+      s.setAttribute("aria-hidden", "true");
+      logo.appendChild(s);
+    });
+  }
+
+  function renderWhere() {
+    var info = app.info || {};
+    var bits = [];
+    var ch = info.challenge;
+    if (ch) bits.push(ch.class_name ? t("where.challenge_class", { title: ch.title, "class": ch.class_name }) : t("where.challenge", { title: ch.title }));
+    if (info.rules && info.rules.time_limit) bits.push(t("where.minutes", { n: Math.round(info.rules.time_limit / 60) }));
+    var role = info.player && info.player.role;
+    if ((role === "coach" || role === "admin") && info.rules && info.rules.counts && info.rules.counts !== "total") {
+      bits.push(t("where.coach_counts"));
+    }
+    $("where").textContent = bits.join(" ");
+    $("where").hidden = !bits.length;
+  }
+
+  function renderHelp() {
+    $("help-goal").textContent = t("help.goal", { length: app.settings.length, guesses: app.settings.guesses });
+    $("help-points").textContent = t("help.points", { max: L.maxPoints(app.settings.guesses) });
+    $("help-accents").hidden = !t("help.accents");
+  }
+
   function renderHome() {
-    var sc = scope();
-    var rec = sc.days[app.today];
+    renderLogo();
+    renderWhere();
+    renderHelp();
+    var key = placeKey();
+    var rec = app.save.w[key];
     var btn = $("btn-daily");
-    btn.disabled = false;
-    if (rec && (rec.r === "won" || rec.r === "lost")) {
-      var used = rec.g ? rec.g.length : rec.c;
-      $("daily-text").textContent = (rec.r === "won"
-        ? "You solved it in " + plural(used, "guess", "guesses") + " and earned " + plural(rec.p, "point", "points") + "."
-        : "You earned 1 point for playing.") + " Come back tomorrow for a new word.";
-      btn.textContent = "Done for today";
+    var loaded = app.ready && !!words();
+    btn.disabled = !loaded;
+    $("btn-practice").disabled = !loaded;
+    if (rec && rec.t === app.today && (rec.r === "won" || rec.r === "lost")) {
+      $("daily-text").textContent = rec.r === "won"
+        ? t("daily.solved", { guesses: guesses(rec.g.length), points: points(rec.p) })
+        : t("daily.lost");
+      btn.textContent = t("daily.done");
       btn.disabled = true;
-    } else if (rec && rec.g && rec.g.length) {
-      $("daily-text").textContent = "You've made " + plural(rec.g.length, "guess", "guesses") + " so far. Keep going!";
-      btn.textContent = "Continue today's word";
+    } else if (rec && !rec.r && rec.g && rec.g.length) {
+      $("daily-text").textContent = t("daily.so_far", { n: rec.g.length });
+      btn.textContent = t("daily.continue");
     } else {
-      $("daily-text").textContent = "A new word every day. It counts on the scoreboard.";
-      btn.textContent = "Play today's word";
+      $("daily-text").textContent = t("daily.new");
+      btn.textContent = t("daily.play");
     }
     $("practice-card").hidden = app.settings.practice === false;
+    $("btn-exit").hidden = !(app.info && app.info.canExit);
 
-    var st = L.stats(sc, app.today);
-    $("st-points").textContent = st.points;
-    $("st-played").textContent = st.played;
-    $("st-solved").textContent = st.played ? Math.round((100 * st.won) / st.played) + "%" : "0%";
-    $("st-streak").textContent = st.streak;
+    var st = L.stats(app.save, key, app.today);
+    $("st-points").textContent = E.number(st.points);
+    $("st-played").textContent = E.number(st.played);
+    $("st-solved").textContent = (st.played ? Math.round((100 * st.won) / st.played) : 0) + "%";
+    $("st-streak").textContent = E.number(st.streak);
 
     var list = $("dist");
     list.innerHTML = "";
     var most = Math.max.apply(null, [1].concat(st.dist.filter(Boolean)));
-    var todayUsed = rec && rec.r === "won" ? (rec.g ? rec.g.length : rec.c) : 0;
+    var todayUsed = rec && rec.t === app.today && rec.r === "won" ? rec.g.length : 0;
     var rows = Math.max(app.settings.guesses, st.dist.length);
     for (var i = 0; i < rows; i++) {
       var n = st.dist[i] || 0;
@@ -118,15 +182,22 @@
     loadBoard();
   }
 
+  /** The scoreboard for this language. Only the Kolibri Games games page has one to show here
+   *  (in Kolibri channels, coaches and learners see it on the games page). */
   function loadBoard() {
-    KG.scoreboard().then(function (data) {
-      var rows = (data && data.rows) || [];
+    if (!app.ready) return;
+    var lang = app.lang;
+    E.scoreboard({ board: lang }).then(function (data) {
+      if (lang !== app.lang) return;
+      // The plugin answers with another board's scoreboard when this one has nobody on it yet.
+      var rows = (data && (!data.board || data.board === lang) && data.rows) || [];
       var body = $("board").querySelector("tbody");
       body.innerHTML = "";
       rows.slice(0, 10).forEach(function (r) {
         var tr = document.createElement("tr");
         if (r.me) tr.className = "me";
-        [r.rank, r.name + (r.me ? " (you)" : ""), r.score].forEach(function (v, i) {
+        var score = r.values && r.values.score !== undefined ? r.values.score : r.score;
+        [r.rank, r.me ? t("board.you", { name: r.name }) : r.name, E.number(score)].forEach(function (v, i) {
           var td = document.createElement("td");
           td.textContent = v;
           if (i === 2) td.className = "num";
@@ -135,7 +206,8 @@
         body.appendChild(tr);
       });
       var ch = app.info && app.info.challenge;
-      $("board-title").textContent = ch ? "Scoreboard for " + ch.title : "Scoreboard";
+      var title = ch ? t("board.title_challenge", { name: ch.title }) : t("board.title");
+      $("board-title").textContent = title + " · " + t("board." + lang);
       $("board-wrap").hidden = rows.length === 0;
     }).catch(function () { $("board-wrap").hidden = true; });
   }
@@ -161,31 +233,37 @@
     }
   }
 
+  function keyButton(ch) {
+    var b = document.createElement("button");
+    b.type = "button";
+    b.className = "key";
+    if (ch === "Enter") {
+      b.textContent = t("key.enter");
+      b.className += " wide";
+    } else if (ch === "Backspace") {
+      b.innerHTML = "&#9003;";
+      b.setAttribute("aria-label", t("key.delete"));
+      b.className += " wide";
+    } else {
+      b.textContent = ch;
+    }
+    b.dataset.key = ch;
+    return b;
+  }
+
+  /** The on-screen keyboard, laid out the way the language's keyboards are (AZERTY in French). */
   function buildKeyboard() {
     var kb = $("keyboard");
     kb.innerHTML = "";
-    KEYS.forEach(function (line) {
+    var lines = E.lines("keyboard");
+    lines.forEach(function (line, i) {
       var row = document.createElement("div");
       row.className = "krow";
+      if (i === lines.length - 1) row.appendChild(keyButton("Enter"));
       line.split("").forEach(function (ch) {
-        var b = document.createElement("button");
-        b.type = "button";
-        b.className = "key";
-        if (ch === "+") {
-          b.textContent = "Enter";
-          b.className += " wide";
-          b.dataset.key = "Enter";
-        } else if (ch === "-") {
-          b.innerHTML = "&#9003;";
-          b.setAttribute("aria-label", "Delete letter");
-          b.className += " wide";
-          b.dataset.key = "Backspace";
-        } else {
-          b.textContent = ch;
-          b.dataset.key = ch;
-        }
-        row.appendChild(b);
+        if (L.plain(ch)) row.appendChild(keyButton(L.plain(ch)));
       });
+      if (i === lines.length - 1) row.appendChild(keyButton("Backspace"));
       kb.appendChild(row);
     });
   }
@@ -203,6 +281,8 @@
     }
   }
 
+  function clue(m) { return t(m === L.HIT ? "clue.hit" : m === L.NEAR ? "clue.near" : "clue.miss"); }
+
   function paintRow(i, word, animate, done) {
     var row = rowEl(i);
     var marks = L.mark(word, game.secret);
@@ -211,7 +291,7 @@
     marks.forEach(function (m, j) {
       var cell = row.children[j];
       cell.textContent = word[j];
-      cell.setAttribute("aria-label", word[j].toUpperCase() + ", " + (m === L.HIT ? "right spot" : m === L.NEAR ? "wrong spot" : "not in the word"));
+      cell.setAttribute("aria-label", word[j].toUpperCase() + ", " + clue(m));
       if (!step) {
         cell.className = "cell " + m;
         return;
@@ -235,7 +315,7 @@
 
   function say(word, marks) {
     $("spoken").textContent = word.toUpperCase() + ": " + marks.map(function (m, i) {
-      return word[i].toUpperCase() + (m === L.HIT ? " right spot" : m === L.NEAR ? " wrong spot" : " not in the word");
+      return word[i].toUpperCase() + " " + clue(m);
     }).join(", ") + ".";
   }
 
@@ -249,46 +329,55 @@
     $("result").hidden = true;
     $("keyboard").hidden = false;
     var mode = $("mode");
-    mode.textContent = game.mode === "daily" ? "Today's word · counts" : "Practice · doesn't count";
+    mode.textContent = t(game.mode === "daily" ? "mode.daily" : "mode.practice");
     mode.className = "mode" + (game.mode === "daily" ? " scored" : "");
     toast("");
     show("play");
+    // The button that started the word is hidden now: let Enter go to the word, not to it.
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+  }
+
+  function dailyFor(date) {
+    return L.dailyWord(dict(app.settings.length).answers, date, app.scope,
+      app.settings.word_mode === "same" ? "" : app.who);
   }
 
   function startDaily() {
     setError("");
     var btn = $("btn-daily");
     btn.disabled = true;
-    KG.start({ resume: true }).then(function (res) {
-      // The server's clock decides which day it is, so changing the device's
-      // clock doesn't unlock tomorrow's word. An attempt left unfinished
-      // belongs to the day it was started.
+    var key = placeKey();
+    var lang = app.lang;
+    E.start({ board: lang, resume: true }).then(function (res) {
+      // On the Kolibri Games games page the server's clock decides which day it is, so
+      // changing the device's clock doesn't unlock tomorrow's word. Elsewhere it's the device's.
       var at = res && res.attempt && res.attempt.started_at;
       var date = at ? L.dateKey(new Date(at)) : L.dateKey(new Date());
       if (date > app.today) app.today = date;
-      var sc = scope();
-      var rec = sc.days[date];
-      if (rec && (rec.r === "won" || rec.r === "lost")) {
-        return KG.abandon().then(function () {
+      var rec = app.save.w[key];
+      // A word left unfinished is carried on, on the day it was started.
+      var going = rec && !rec.r && rec.g && rec.g.length && rec.w && rec.t;
+      if (going) date = rec.t;
+      if (!going && L.playedOn(app.save, key, date)) {
+        return E.abandon().then(function () {
           renderHome();
-          setError("You've already played the word for " + date + ". Come back tomorrow!");
+          setError(t("daily.already", { date: dateText(date) }));
         });
       }
       var word;
-      if (rec && rec.w && rec.g) {
+      if (rec && rec.t === date && !rec.r && rec.w && Array.isArray(rec.g)) {
         word = L.unhide(rec.w);
       } else {
-        word = L.dailyWord(dict(app.settings.length).answers, date, app.scope,
-          app.settings.word_mode === "same" ? "" : app.who);
-        rec = sc.days[date] = { w: L.hide(word), n: app.settings.guesses, g: [], r: "", p: 0 };
-        save();
+        word = dailyFor(date);
+        rec = app.save.w[key] = { t: date, w: L.hide(word), n: app.settings.guesses, g: [], r: "", p: 0 };
+        persist();
       }
       game = {
-        mode: "daily", date: date, rec: rec, secret: word, guesses: rec.g.slice(),
+        mode: "daily", key: key, lang: lang, date: date, rec: rec, secret: word, guesses: rec.g.slice(),
         allowed: rec.n || app.settings.guesses, dict: dict(word.length), over: false, busy: false
       };
       openPlay();
-      if (res && res.resumed && game.guesses.length) toast("Welcome back! Your guesses are still here.", 2500);
+      if (game.guesses.length) toast(t("welcome_back"), 2500);
     }).catch(function (err) {
       setError(err.message);
     }).then(function () {
@@ -298,9 +387,8 @@
 
   function startPractice() {
     var d = dict(app.settings.length);
-    var todays = L.dailyWord(d.answers, app.today, app.scope, app.settings.word_mode === "same" ? "" : app.who);
-    var word = L.practiceWord(d.answers, [todays, game && game.secret]);
-    game = { mode: "practice", secret: word, guesses: [], allowed: app.settings.guesses, dict: d, over: false, busy: false };
+    var word = L.practiceWord(d.answers, [dailyFor(app.today), game && game.secret]);
+    game = { mode: "practice", lang: app.lang, secret: word, guesses: [], allowed: app.settings.guesses, dict: d, over: false, busy: false };
     openPlay();
   }
 
@@ -329,24 +417,26 @@
 
   function submit() {
     var guess = game.current;
-    if (guess.length < game.secret.length) return shake("Not enough letters");
-    if (!game.dict.isWord(guess)) return shake("That word isn't in the word list");
+    if (guess.length < game.secret.length) return shake(t("not_enough"));
+    if (!game.dict.isWord(guess)) return shake(t("not_a_word"));
     var marks = L.mark(guess, game.secret);
     var solved = guess === game.secret;
     var report = game.mode === "daily"
-      ? KG.move("guess", { word: guess, marks: L.code(marks), number: game.guesses.length + 1 })
+      ? E.move("guess", { word: guess, marks: L.code(marks), number: game.guesses.length + 1, language: game.lang })
       : Promise.resolve();
     game.busy = true;
     game.sending = true;
     toast("");
+    var playing = game;
     report.then(function () {
+      if (game !== playing) return;
       game.sending = false;
       var i = game.guesses.length;
       game.guesses.push(guess);
       game.current = "";
       if (game.mode === "daily") {
         game.rec.g = game.guesses.slice();
-        if (!solved && game.guesses.length < game.allowed) save();
+        if (!solved && game.guesses.length < game.allowed) persist();
       }
       var last = solved || game.guesses.length >= game.allowed;
       if (last) game.over = true;
@@ -356,8 +446,8 @@
         if (last) end(solved);
       });
     }).catch(function (err) {
-      game.busy = false;
-      game.sending = false;
+      playing.busy = false;
+      playing.sending = false;
       toast(err.message);
     });
   }
@@ -381,58 +471,47 @@
     setTimeout(function () { box.innerHTML = ""; }, 1600);
   }
 
+  function showWord() {
+    var text = t("the_word_was", { word: "\u0000" }).split("\u0000");
+    var el = $("result-word");
+    el.innerHTML = "";
+    el.appendChild(document.createTextNode(text[0] || ""));
+    var b = document.createElement("b");
+    b.textContent = L.shown(app.words[game.lang], game.secret).toUpperCase();
+    el.appendChild(b);
+    el.appendChild(document.createTextNode(text[1] || ""));
+  }
+
   function end(solved) {
     var used = game.guesses.length;
     if (solved) celebrate();
-    $("result-title").textContent = solved ? WIN_WORDS[Math.min(used, WIN_WORDS.length) - 1] : "Not this time";
-    $("result-word").innerHTML = "";
-    $("result-word").appendChild(document.createTextNode("The word was "));
-    var b = document.createElement("b");
-    b.textContent = game.secret.toUpperCase();
-    $("result-word").appendChild(b);
-    $("result-word").appendChild(document.createTextNode("."));
+    var win = E.lines("win");
+    $("result-title").textContent = solved ? win[Math.min(used, win.length) - 1] : t("not_this_time");
+    showWord();
     $("result-standing").textContent = "";
     $("btn-more").hidden = app.settings.practice === false;
 
     if (game.mode === "practice") {
-      var p = app.state.practice;
-      p.played = (p.played || 0) + 1;
-      if (solved) {
-        p.won = (p.won || 0) + 1;
-        p.dist[used - 1] = (p.dist[used - 1] || 0) + 1;
-      }
-      save();
-      $("result-points").textContent = "Practice words don't count. You've solved " + p.won + " of " +
-        plural(p.played, "practice word", "practice words") + ".";
+      var p = L.addPractice(app.save, game.lang, solved);
+      persist();
+      $("result-points").textContent = t("practice.result", { won: p.won, played: t("practice_words", { n: p.played }) });
       return showResult();
     }
 
     var rec = game.rec;
-    var sc = scope();
     rec.r = solved ? "won" : "lost";
     rec.p = L.points(solved, used, game.allowed);
-    L.prune(sc, game.date);
-    var totalPoints = L.total(sc);
-    $("result-points").textContent = "+" + plural(rec.p, "point", "points") + " today. You have " +
-      plural(totalPoints, "point", "points") + " in total.";
-    $("result-standing").textContent = "Saving your result…";
+    L.addResult(app.save, game.key, game.date, solved, used, rec.p);
+    var total = L.stats(app.save, game.key, game.date).points;
+    $("result-points").textContent = t("points_today", { points: points(rec.p), total: points(total) });
+    $("result-standing").textContent = t("saving");
     showResult();
-    save().then(function () {
-      return KG.finish({
-        score: totalPoints,
-        detail: { date: game.date, word: game.secret, guesses: game.guesses.slice(), solved: solved, points: rec.p, total: totalPoints }
-      });
-    }).then(function (res) {
-      var note = "";
-      if (res.attempt && res.attempt.practice) {
-        note = "Ask your coach to set “Which attempt counts” to “Best attempt”, so your new total shows on the scoreboard.";
-      } else if (res.standing) {
-        note = "You're number " + res.standing.rank + " of " + res.standing.of + " on the scoreboard.";
-      }
-      $("result-standing").textContent = note;
+    persist();
+    E.finish({ score: rec.p }, { board: game.lang }).then(function (res) {
+      var standing = res && res.platform && res.platform.standing;
+      $("result-standing").textContent = standing ? t("standing", { rank: standing.rank, of: standing.of }) : "";
     }).catch(function (err) {
-      $("result-standing").textContent = "Couldn't send your result to the scoreboard (" + err.message +
-        "). It's kept, and will be added with your next word.";
+      $("result-standing").textContent = t("not_sent", { error: err.message });
     });
   }
 
@@ -440,7 +519,6 @@
     $("keyboard").hidden = true;
     $("result").hidden = false;
     setTimeout(function () {
-      $("btn-home").focus({ preventScroll: true });
       if ($("result").scrollIntoView) $("result").scrollIntoView({ block: "nearest", behavior: "smooth" });
     }, 50);
   }
@@ -456,17 +534,17 @@
   document.addEventListener("keydown", function (e) {
     if (e.ctrlKey || e.metaKey || e.altKey) return;
     if (e.key === "Enter" || e.key === "Backspace") {
-      if (document.activeElement && document.activeElement.tagName === "BUTTON" && !document.activeElement.dataset.key) {
-        if (e.key === "Enter") return; // let Enter press a focused button
-      }
+      var focused = document.activeElement;
+      if (e.key === "Enter" && focused && focused.tagName === "BUTTON" && !focused.dataset.key) return; // let Enter press a focused button
       if (!$("play").hidden && game && !game.over) {
         e.preventDefault();
         press(e.key);
       }
       return;
     }
-    var k = (e.key || "").toLowerCase();
-    if (/^[a-z]$/.test(k)) press(k);
+    // Accented letters count as the plain letter: "é" types "e".
+    var k = L.plain(e.key);
+    if (k) press(k);
   });
 
   $("keyboard").addEventListener("click", function (e) {
@@ -481,66 +559,67 @@
   $("btn-practice").addEventListener("click", startPractice);
   $("btn-more").addEventListener("click", startPractice);
   $("btn-home").addEventListener("click", goHome);
-  $("btn-back").addEventListener("click", function () {
-    // A daily word in progress is kept (guesses are saved) and can be continued.
-    goHome();
-  });
-  $("btn-exit").addEventListener("click", function () { KG.exit(); });
-  function openHelp() { show("help"); $("btn-help-done").focus(); }
+  // A daily word in progress is kept (its guesses are saved) and can be continued.
+  $("btn-back").addEventListener("click", goHome);
+  $("btn-exit").addEventListener("click", function () { E.exit(); });
+  function openHelp() { show("help"); }
   $("btn-help").addEventListener("click", openHelp);
   $("btn-help2").addEventListener("click", openHelp);
   $("btn-help-done").addEventListener("click", function () { show(app.lastScreen); });
 
-  KG.on("timeup", function () {
+  E.on("timeup", function () {
     if (!game || game.mode !== "daily" || game.over) return;
     game.over = true;
     game.rec.r = "lost";
-    game.rec.p = L.points(false, game.guesses.length, game.allowed);
-    save();
-    $("result-title").textContent = "Time's up";
-    $("result-word").textContent = "You ran out of time for today's word.";
-    $("result-points").textContent = "You still earn 1 point for playing. It reaches the scoreboard with your next word.";
+    game.rec.p = 0;
+    L.addResult(app.save, game.key, game.date, false, game.guesses.length, 0);
+    persist();
+    $("result-title").textContent = t("time_up");
+    $("result-word").textContent = t("time_up.word");
+    $("result-points").textContent = t("time_up.points");
     $("result-standing").textContent = "";
     showResult();
   });
+
+  // The language changes the daily word, the word lists, the keyboard and the scoreboard.
+  // A daily word in progress is kept for when the learner comes back to that language.
+  E.on("languagechange", function (e) {
+    app.lang = e.language;
+    if (game) game = null;
+    show($("help").hidden ? "home" : "help");
+    renderHome();
+    loadWords(app.lang).then(renderHome).catch(function (err) { setError(err.message); });
+  });
+
+  // The page is closing: save once more (Kolibri Learn only keeps saves made before this, which
+  // Sparkle makes after every guess).
+  E.on("leave", function () { persist(); });
 
   // ------------------------------------------------------------- startup
 
   function readSettings(s) {
     s = s || {};
     var length = parseInt(s.length, 10);
-    var guesses = parseInt(s.guesses, 10);
+    var allowed = parseInt(s.guesses, 10);
     return {
       length: [4, 5, 6].indexOf(length) >= 0 ? length : 5,
-      guesses: guesses >= 3 && guesses <= 10 ? guesses : 6,
+      guesses: allowed === 8 ? 8 : 6,
       word_mode: s.word_mode === "same" ? "same" : "each",
       practice: s.practice !== false
     };
   }
 
-  Promise.all([KG.ready(), KG.getState().catch(function () { return null; })]).then(function (out) {
-    var info = out[0];
+  renderLogo();
+  E.ready().then(function (info) {
     app.info = info;
-    app.state = L.cleanState(out[1]);
+    app.save = L.cleanSave(info.save);
     app.settings = readSettings(info.settings);
     app.scope = info.challenge && info.challenge.id != null ? "c" + info.challenge.id : "free";
     app.who = ((info.player && info.player.name) || "").trim().toLowerCase();
-
-    $("help-length").textContent = app.settings.length;
-    $("help-guesses").textContent = app.settings.guesses;
-    $("help-max").textContent = L.maxPoints(app.settings.guesses);
-
-    var bits = [];
-    if (info.challenge) bits.push("Class challenge: " + info.challenge.title + (info.challenge.class_name ? " (" + info.challenge.class_name + ")" : "") + ".");
-    if (info.rules && info.rules.time_limit) bits.push("You have " + plural(Math.round(info.rules.time_limit / 60), "minute", "minutes") + " for each word.");
-    if (info.preview) bits.push("Preview: results stay in this browser.");
-    var role = info.player && info.player.role;
-    if ((role === "coach" || role === "admin") && info.rules && info.rules.counts === "first") {
-      bits.push("For coaches: Sparkle adds up points day after day, so set “Which attempt counts” to “Best attempt”.");
-    }
-    $("where").textContent = bits.join(" ");
-    $("where").hidden = !bits.length;
+    app.lang = info.language;
+    app.ready = true;
     renderHome();
+    return loadWords(app.lang).then(renderHome);
   }).catch(function (err) {
     setError(err.message);
     renderHome();

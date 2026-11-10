@@ -1,15 +1,22 @@
 """
-Browser test: plays Sparkle through the real Kolibri Games page, SDK and sandbox,
-using the Kolibri Games preview server. Needs Playwright with Chromium, and the
-kolibri-games package (pip install, or a checkout on PYTHONPATH).
+Browser test: plays Sparkle on the Kolibri Games games page (its SDK, sandbox, attempts and
+scoreboards), using the Kolibri Games preview server. Needs EduGame Kit, Playwright with Chromium,
+and the kolibri-games package (pip install, or a checkout on PYTHONPATH).
 
-    python3 tests/e2e_preview.py [--screenshots DIR]
+    python3 tests/games_page_test.py [--screenshots DIR]
+
+It builds the game's zip with the kit and plays it as two learners: each gets their own word,
+English and French each have their own scoreboard, and a word left half-way carries on.
 """
 import argparse
+import glob
 import os
 import re
+import subprocess
+import sys
 import tempfile
 import threading
+import zipfile
 from http.server import ThreadingHTTPServer
 
 from playwright.sync_api import expect
@@ -18,8 +25,19 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GAME = "#/play/g-org.togetherings.sparkle"
 
 
+def build():
+    """The game's zip, unzipped where the preview server finds it."""
+    out = tempfile.mkdtemp(prefix="sparkle-build-")
+    subprocess.run([sys.executable, "-m", "edugame", "build", os.path.join(ROOT, "game"), "-o", out], check=True,
+                   stdout=subprocess.DEVNULL)
+    games = os.path.join(out, "games")
+    with zipfile.ZipFile(glob.glob(os.path.join(out, "*.zip"))[0]) as z:
+        z.extractall(os.path.join(games, "sparkle"))
+    return games
+
+
 def serve(port):
-    os.environ["KOLIBRI_GAMES_PATH"] = ROOT  # finds the game/ folder
+    os.environ["KOLIBRI_GAMES_PATH"] = build()
     os.environ["KOLIBRI_HOME"] = tempfile.mkdtemp(prefix="sparkle-e2e-")
     os.environ["KOLIBRI_GAMES_DEV_QUIET"] = "1"
     from kolibri_games import devserver, registry
@@ -38,14 +56,18 @@ def game_frame(page):
     return frames[0]
 
 
-def saved_word(page):
+def saved_word(page, lang="en"):
     """Today's secret word, read from the learner's saved data (as a coach could)."""
     f = game_frame(page)
     return f.evaluate(
-        """() => KolibriGames.getState().then(s => {
-             const sc = s.scopes.free; const k = Object.keys(sc.days).sort().pop();
-             return SparkleLogic.unhide(sc.days[k].w); })"""
+        """(lang) => KolibriGames.getState().then(s => SparkleLogic.unhide(s._save.w["free|" + lang].w))""", lang
     )
+
+
+def choose_language(frame, code):
+    frame.locator("#btn-options").click()
+    frame.locator("input[name=eg-language][value=%s]" % code).check()
+    frame.locator(".eg-primary").click()
 
 
 def type_word(frame, word, keyboard=True):
@@ -63,9 +85,9 @@ def revealed(page, frame, row):
     page.wait_for_timeout(400)
 
 
-def wrong_words(secret, n):
+def wrong_words(secret, n, words=("crane", "plumb", "fight", "dowdy", "jokes", "waltz", "nymph", "sixty", "brick")):
     out = []
-    for w in ["crane", "plumb", "fight", "dowdy", "jokes", "waltz", "nymph", "sixty", "brick"]:
+    for w in words:
         if w != secret and len(out) < n:
             out.append(w)
     return out
@@ -143,6 +165,29 @@ def main():
         frame.locator("#home:not([hidden])").wait_for()
         assert frame.locator("#st-points").inner_text() == "7"
 
+        # French: its own daily word and its own scoreboard, which starts empty
+        choose_language(frame, "fr")
+        frame.locator("#btn-daily:has-text('Jouer le mot du jour'):not([disabled])").wait_for()
+        assert frame.locator("#st-points").inner_text() == "0"
+        page.wait_for_timeout(500)
+        assert frame.locator("#board-wrap").is_hidden(), "nobody is on the French scoreboard yet"
+        frame.locator("#btn-daily").click()
+        frame.locator("#play:not([hidden])").wait_for()
+        mot = saved_word(page, "fr")
+        type_word(frame, wrong_words(mot, 1, ("chats", "porte", "livre"))[0])
+        revealed(page, frame, 0)
+        type_word(frame, mot)
+        frame.locator("#result:not([hidden])").wait_for(timeout=10000)
+        frame.locator("#result-standing:has-text('numéro 1 sur 1')").wait_for(timeout=10000)
+        frame.locator("#btn-home").click()
+        frame.locator("#board tbody tr.me").wait_for()
+        assert "Mots en français" in frame.locator("#board-title").inner_text()
+        assert frame.locator("#st-points").inner_text() == "7"
+        shot(page, "3b-french.png")
+        choose_language(frame, "en")
+        frame.locator("#btn-daily[disabled]:has-text('Done for today')").wait_for()
+        assert frame.locator("#st-points").inner_text() == "7", "English points stay their own"
+
         # Ben: his own word; he leaves after one guess and comes back to it
         page.goto(base + "?as=ben")
         page.goto(base + GAME)
@@ -166,6 +211,13 @@ def main():
         rows = frame.locator("#board tbody tr").all_inner_texts()
         assert len(rows) == 2, rows
         shot(page, "4-scoreboard.png")
+        # The French scoreboard has only Amina: Ben's English points aren't on it.
+        choose_language(frame, "fr")
+        frame.locator("#board-title:has-text('Mots en français')").wait_for()
+        rows = frame.locator("#board tbody tr").all_inner_texts()
+        assert len(rows) == 1 and frame.locator("#board tbody tr.me").count() == 0, rows
+        choose_language(frame, "en")
+        frame.locator("#btn-daily[disabled]").wait_for()
 
         # Phone-sized screen
         page.set_viewport_size({"width": 390, "height": 760})

@@ -17,8 +17,14 @@
   --warn: #b3261e;
   color-scheme: light;
 }
+/* Dark: the Options panel's choice (<html data-theme>), or the device's when there's no choice yet */
+:root[data-theme=dark] {
+  --bg: #12151f; --panel: #1b2030; --ink: #eef0f5; --muted: #a7adbd; --line: #313849;
+  --key: #3a4155; --key-ink: #eef0f5; --miss: #4b5163; --go: #f5b700; --go-ink: #2a1d00; --warn: #ff8a80;
+  color-scheme: dark;
+}
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme]) {
     --bg: #12151f; --panel: #1b2030; --ink: #eef0f5; --muted: #a7adbd; --line: #313849;
     --key: #3a4155; --key-ink: #eef0f5; --miss: #4b5163; --go: #f5b700; --go-ink: #2a1d00; --warn: #ff8a80;
     color-scheme: dark;
